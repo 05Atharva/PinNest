@@ -1,0 +1,61 @@
+# ─── Dependencies ─────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Environment Variables ────────────────────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ─── Expo / React Native ──────────────────────────────────────
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# EAS Build
+.easignore
+eas-build-local-nodejs/
+
+# Metro bundler cache
+.metro-health-check*
+
+# React Native
+*.jsbundle
+*.hbc
+
+# Android build artifacts
+android/
+ios/
+*.keystore
+!debug.keystore
+
+# ─── Build Outputs ────────────────────────────────────────────
+build/
+*.apk
+*.aab
+*.ipa
+
+# ─── Logs ─────────────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ─── OS / Editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── Project Docs (Internal Only) ─────────────────────────────
+PRD.txt
