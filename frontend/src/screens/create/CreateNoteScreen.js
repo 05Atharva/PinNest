@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
+import { requestWidgetUpdate } from 'react-native-android-widget';
 import {
   BROWN,
   DUSTY_BLUE,
@@ -26,6 +28,8 @@ import {
   TERRACOTTA,
 } from '../../constants/colors';
 import { useNotes } from '../../hooks/useNotes';
+import PinNestWidget, { WIDGET_NAME_BY_PRIORITY } from '../../widgets/PinNestWidget';
+import { saveWidgetNote } from '../../widgets/widgetTaskHandler';
 
 const COLOR_OPTIONS = [
   { key: 'yellow', label: 'Yellow', hex: NOTE_YELLOW },
@@ -89,15 +93,19 @@ const CreateNoteScreen = () => {
     ? format(deadline, 'dd MMM yyyy')
     : 'No deadline';
 
+  const buildNotePayload = () => ({
+    id: note?.id,
+    title: title.trim(),
+    description: description.trim() || null,
+    priority,
+    color: colorKey,
+    deadline: deadline ? deadline.toISOString() : null,
+    is_completed: note?.is_completed ?? false,
+  });
+
   const onSave = async () => {
     if (!title.trim()) return;
-    const payload = {
-      title: title.trim(),
-      description: description.trim() || null,
-      priority,
-      color: colorKey,
-      deadline: deadline ? deadline.toISOString() : null,
-    };
+    const payload = buildNotePayload();
 
     if (isEdit) {
       await editNote(note.id, payload);
@@ -110,6 +118,30 @@ const CreateNoteScreen = () => {
       ToastAndroid.show('Pinned!', ToastAndroid.SHORT);
     }
     navigation.goBack();
+  };
+
+  const onAddToHomeScreen = async () => {
+    if (!isEdit || !note?.id) return;
+    const widgetNote = buildNotePayload();
+    const widgetName = WIDGET_NAME_BY_PRIORITY[priority] ?? WIDGET_NAME_BY_PRIORITY.medium;
+
+    await requestWidgetUpdate({
+      widgetName,
+      renderWidget: async (widgetInfo) => {
+        await saveWidgetNote(widgetInfo.widgetId, widgetNote);
+        return <PinNestWidget note={widgetNote} />;
+      },
+      widgetNotFound: () => {
+        Alert.alert(
+          'Add Widget',
+          'To add this note, long-press your home screen → Widgets → PinNest, then choose the size.'
+        );
+      },
+    });
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Widget updated', ToastAndroid.SHORT);
+    }
   };
 
   return (
@@ -206,6 +238,11 @@ const CreateNoteScreen = () => {
         ) : null}
 
         <View style={styles.bottomBar}>
+          {isEdit ? (
+            <Pressable onPress={onAddToHomeScreen} style={styles.widgetButton}>
+              <Text style={styles.widgetText}>Add to Home Screen</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={onSave} style={styles.saveButton}>
             <Text style={styles.saveText}>
               {isEdit ? 'Save changes' : 'Pin it'}
@@ -293,6 +330,20 @@ const styles = StyleSheet.create({
   bottomBar: {
     marginTop: 'auto',
     paddingVertical: 18,
+    gap: 10,
+  },
+  widgetButton: {
+    borderWidth: 1,
+    borderColor: TERRACOTTA,
+    paddingVertical: 12,
+    borderRadius: 18,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  widgetText: {
+    color: TERRACOTTA,
+    fontSize: 14,
+    fontWeight: '700',
   },
   saveButton: {
     backgroundColor: TERRACOTTA,
