@@ -1,0 +1,13 @@
+export const WARM_BG = '#F5E9DA';
+export const PAPER_BEIGE = '#EADBC8';
+export const BROWN = '#8B5E3C';
+export const TERRACOTTA = '#D97A5F';
+export const MUTED_GREEN = '#7A9E7E';
+export const DUSTY_BLUE = '#7C9FB0';
+export const NOTE_YELLOW = '#F3E3B3';
+export const NOTE_GREEN = '#DCE8D5';
+export const NOTE_BLUE = '#D9E6EC';
+export const NOTE_NEUTRAL = '#EFE4D8';
+export const DARK_BG = '#1E1B18';
+export const DARK_NOTE = '#2A2622';
+export const DARK_ACCENT = '#E07A5F';
