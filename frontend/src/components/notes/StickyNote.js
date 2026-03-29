@@ -3,11 +3,23 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   BROWN,
   MUTED_GREEN,
+  NOTE_BLUE,
+  NOTE_GREEN,
+  NOTE_NEUTRAL,
   NOTE_YELLOW,
   TERRACOTTA,
 } from '../../constants/colors';
 import { getPinColor, getPrioritySize } from '../../utils/priorityHelpers';
 import { formatDeadline, getUrgencyLevel } from '../../utils/dateHelpers';
+
+// note.color is stored as a name string in DB ('neutral'|'yellow'|'green'|'blue').
+// Map to hex before passing to toRgba().
+const COLOR_MAP = {
+  yellow: NOTE_YELLOW,
+  green: NOTE_GREEN,
+  blue: NOTE_BLUE,
+  neutral: NOTE_NEUTRAL,
+};
 
 const toRgba = (hex, alpha) => {
   if (!hex || typeof hex !== 'string') return `rgba(0,0,0,${alpha})`;
@@ -57,7 +69,8 @@ const StickyNote = ({ note, onPress, onLongPress, style }) => {
   }, [scale]);
 
   const pinColor = getPinColor(note.priority);
-  const backgroundColor = toRgba(note.color, 0.92);
+  const colorHex = COLOR_MAP[note.color] ?? NOTE_NEUTRAL;
+  const backgroundColor = toRgba(colorHex, 0.92);
   const deadlineText = note.deadline ? formatDeadline(note.deadline) : null;
   const urgency = getUrgencyLevel(note.deadline);
   const urgencyBg = getUrgencyBg(urgency);

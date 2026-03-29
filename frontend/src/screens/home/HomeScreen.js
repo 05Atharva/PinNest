@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Pressable,
   RefreshControl,
@@ -56,7 +57,7 @@ const buildPositions = (notes, maxWidth, jitterMap) => {
 const HomeScreen = () => {
   const navigation = useNavigation();
   const { user } = useUserStore();
-  const { filteredNotes, loading, fetchNotes, activeFilter, setFilter } = useNotes();
+  const { filteredNotes, loading, fetchNotes, removeNote, activeFilter, setFilter } = useNotes();
   const [boardSize, setBoardSize] = useState(() => {
     const { width, height } = Dimensions.get('window');
     return { width, height };
@@ -155,6 +156,8 @@ const HomeScreen = () => {
           ) : (
             filteredNotes.map((note) => {
               const pos = layout.positions[note.id];
+              // Guard: skip notes that don't have a layout position yet (e.g. temp optimistic notes).
+              if (!pos) return null;
               return (
                 <StickyNote
                   key={note.id}
@@ -163,6 +166,20 @@ const HomeScreen = () => {
                   onPress={() =>
                     navigation.navigate('EditNoteScreen', { note })
                   }
+                  onLongPress={() => {
+                    Alert.alert(
+                      'Delete Note',
+                      `Delete "${note.title}"? This cannot be undone.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => removeNote(note.id),
+                        },
+                      ]
+                    );
+                  }}
                 />
               );
             })

@@ -21,12 +21,11 @@ const applyFilter = (notes, filter) => {
   return notes;
 };
 
+export { applyFilter };
+
 export const useNotesStore = create(
   immer((set, get) => ({
     ...initialState,
-    get filteredNotes() {
-      return applyFilter(get().notes, get().activeFilter);
-    },
     setFilter: (filter) => {
       set((state) => {
         state.activeFilter = filter;
