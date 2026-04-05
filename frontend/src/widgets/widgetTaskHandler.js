@@ -1,6 +1,6 @@
-import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
+import React from 'react';
 import PinNestWidget from './PinNestWidget';
 
 const NOTE_STORAGE_KEY = 'pinnest_widget_note_';
@@ -26,26 +26,39 @@ export const removeWidgetNote = async (widgetId) => {
   await AsyncStorage.removeItem(`${NOTE_STORAGE_KEY}${widgetId}`);
 };
 
-// Register once on app startup (e.g. import this file in App.js or root layout).
-registerWidgetTaskHandler(async ({ widgetInfo, widgetAction, renderWidget, clickActionData }) => {
-  const widgetId = widgetInfo?.widgetId;
-  const note = clickActionData?.note ?? (await loadWidgetNote(widgetId));
+/**
+ * react-native-android-widget handler API (v0.10):
+ *   Props: { widgetAction, widgetName, widgetId, clickAction, clickActionData }
+ *   Must RETURN a JSX element (or null). Do NOT call renderWidget().
+ *
+ * HOW TO ADD A WIDGET TO HOME SCREEN:
+ *   1. Long-press any empty spot on the Android home screen.
+ *   2. Tap "Widgets" at the bottom.
+ *   3. Find "PinNest" and drag the desired size onto the screen.
+ *   4. Open the app, edit a note, tap "Add to Home Screen" to fill that slot.
+ */
+registerWidgetTaskHandler(async ({ widgetAction, widgetId, clickActionData }) => {
+  const PLACEHOLDER = {
+    title: 'Tap to pin a goal',
+    color: 'neutral',
+    priority: 'medium',
+    deadline: null,
+  };
 
   if (widgetAction === 'WIDGET_DELETED') {
     await removeWidgetNote(widgetId);
-    return;
+    return null;
   }
 
+  // For WIDGET_CLICK the OS brings the app to foreground automatically.
+  // Deep-link routing can be wired in Phase 2.
   if (widgetAction === 'WIDGET_CLICK') {
-    if (note?.id) {
-      // Requires deep link setup in the app (e.g. pinnest://note/:id).
-      Linking.openURL(`pinnest://note/${note.id}`);
-    } else {
-      Linking.openURL('pinnest://');
-    }
+    return null;
   }
 
-  if (note) {
-    renderWidget(<PinNestWidget note={note} />);
-  }
+  // WIDGET_ADDED | WIDGET_UPDATE | WIDGET_RESIZED
+  const note =
+    clickActionData?.note ?? (await loadWidgetNote(widgetId)) ?? PLACEHOLDER;
+
+  return <PinNestWidget note={note} />;
 });

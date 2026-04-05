@@ -9,6 +9,8 @@ import '../src/widgets/widgetTaskHandler';
 
 const RootLayout = () => {
   const [checking, setChecking] = useState(true);
+  // Reactive selector — re-renders the layout when session changes.
+  const session = useUserStore((s) => s.session);
   const setSession = useUserStore((s) => s.setSession);
   const fetchNotes = useNotesStore((s) => s.fetchNotes);
 
@@ -36,7 +38,6 @@ const RootLayout = () => {
 
   if (checking) return null;
 
-  const session = useUserStore.getState().session;
   if (!session) {
     return (
       <>

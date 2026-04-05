@@ -13,7 +13,10 @@ import {
   BROWN,
   DUSTY_BLUE,
   MUTED_GREEN,
+  NOTE_BLUE,
+  NOTE_GREEN,
   NOTE_NEUTRAL,
+  NOTE_YELLOW,
   PAPER_BEIGE,
   TERRACOTTA,
   WARM_BG,
@@ -21,6 +24,14 @@ import {
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { useNotes } from '../../hooks/useNotes';
 import { formatDeadline, getUrgencyLevel } from '../../utils/dateHelpers';
+
+// note.color is stored as a string name in DB — map to hex for backgroundColor.
+const COLOR_MAP = {
+  yellow: NOTE_YELLOW,
+  green: NOTE_GREEN,
+  blue: NOTE_BLUE,
+  neutral: NOTE_NEUTRAL,
+};
 
 const HEATMAP_COLS = 12;
 const HEATMAP_ROWS = 7;
@@ -128,8 +139,10 @@ const AnalyticsScreen = () => {
           ) : (
             <VictoryPie
               data={[
-                { x: 1, y: completionPct },
-                { x: 2, y: Math.max(0, 100 - completionPct) },
+                // Guard: VictoryPie crashes if both y values are 0.
+                // Ensure at least a hairline slice is always present.
+                { x: 1, y: Math.max(completionPct, 0.5) },
+                { x: 2, y: Math.max(100 - completionPct, 0.5) },
               ]}
               width={120}
               height={120}
@@ -218,31 +231,36 @@ const AnalyticsScreen = () => {
         {loading ? (
           <SkeletonBlock height={160} />
         ) : (
-          <VictoryChart
-            width={320}
-            height={180}
-            theme={VictoryTheme.material}
-            domainPadding={{ y: 10 }}
-          >
-            <VictoryAxis
-              tickFormat={() => ''}
-              style={{ axis: { stroke: 'transparent' }, ticks: { stroke: 'transparent' } }}
-            />
-            <VictoryAxis
-              dependentAxis
-              style={{
-                axis: { stroke: 'transparent' },
-                ticks: { stroke: 'transparent' },
-                tickLabels: { fill: BROWN, fontSize: 10 },
-                grid: { stroke: 'rgba(139,94,60,0.1)' },
-              }}
-            />
-            <VictoryLine
-              interpolation="natural"
-              data={weeklySeries}
-              style={{ data: { stroke: TERRACOTTA, strokeWidth: 3 } }}
-            />
-          </VictoryChart>
+          {weeklySeries.length < 2 ? (
+            // VictoryLine needs at least 2 data points to render — show placeholder.
+            <Text style={styles.emptyNote}>Not enough data yet</Text>
+          ) : (
+            <VictoryChart
+              width={320}
+              height={180}
+              theme={VictoryTheme.material}
+              domainPadding={{ y: 10 }}
+            >
+              <VictoryAxis
+                tickFormat={() => ''}
+                style={{ axis: { stroke: 'transparent' }, ticks: { stroke: 'transparent' } }}
+              />
+              <VictoryAxis
+                dependentAxis
+                style={{
+                  axis: { stroke: 'transparent' },
+                  ticks: { stroke: 'transparent' },
+                  tickLabels: { fill: BROWN, fontSize: 10 },
+                  grid: { stroke: 'rgba(139,94,60,0.1)' },
+                }}
+              />
+              <VictoryLine
+                interpolation="natural"
+                data={weeklySeries}
+                style={{ data: { stroke: TERRACOTTA, strokeWidth: 3 } }}
+              />
+            </VictoryChart>
+          )}
         )}
       </View>
 
@@ -292,7 +310,7 @@ const AnalyticsScreen = () => {
                 <View
                   style={[
                     styles.deadlineDot,
-                    { backgroundColor: note.color ? note.color : NOTE_NEUTRAL },
+                    { backgroundColor: COLOR_MAP[note.color] ?? NOTE_NEUTRAL },
                   ]}
                 />
                 <Text style={styles.deadlineTitle} numberOfLines={1}>

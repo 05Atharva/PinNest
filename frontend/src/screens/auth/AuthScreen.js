@@ -26,11 +26,10 @@ const AuthScreen = () => {
     if (!email || !password) return;
     setLoading(true);
     setError(null);
-    const authFn =
+    const { error: authError } =
       mode === 'signup'
-        ? supabase.auth.signUp
-        : supabase.auth.signInWithPassword;
-    const { error: authError } = await authFn({ email, password });
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password });
     if (authError) setError(authError.message);
     setLoading(false);
   };
