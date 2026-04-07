@@ -8,46 +8,77 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../services/supabase';
 import {
   BROWN,
+  MUTED_GREEN,
   PAPER_BEIGE,
   TERRACOTTA,
   WARM_BG,
 } from '../../constants/colors';
+import { useSettingsStore } from '../../store/settingsStore';
+import { getThemeColors } from '../../utils/themeHelpers';
 
 const AuthScreen = () => {
+  const theme = useSettingsStore((s) => s.theme);
+  const colors = getThemeColors(theme);
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
 
   const handleAuth = async (mode) => {
-    if (!email || !password) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+    if (!trimmedEmail || !trimmedPassword) {
+      setError('Enter email and password.');
+      return;
+    }
     setLoading(true);
     setError(null);
-    const { error: authError } =
-      mode === 'signup'
-        ? await supabase.auth.signUp({ email, password })
-        : await supabase.auth.signInWithPassword({ email, password });
-    if (authError) setError(authError.message);
+    setInfo(null);
+    if (mode === 'signup') {
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password: trimmedPassword,
+      });
+      if (authError) {
+        setError(authError.message);
+      } else if (data?.user && !data?.session) {
+        setInfo('Check your email to confirm your account.');
+      }
+    } else {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password: trimmedPassword,
+      });
+      if (authError) setError(authError.message);
+    }
     setLoading(false);
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
       <KeyboardAvoidingView
-        style={styles.card}
+        style={[styles.card, { backgroundColor: colors.card, shadowColor: colors.shadow }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.title}>PinNest</Text>
-        <Text style={styles.tagline}>Your goals. Always in sight.</Text>
+        <Text style={[styles.title, { color: colors.accent }]}>PinNest</Text>
+        <Text style={[styles.tagline, { color: colors.text }]}>Your goals. Always in sight.</Text>
 
         <TextInput
           value={email}
           onChangeText={setEmail}
           placeholder="Email"
-          placeholderTextColor="rgba(139,94,60,0.6)"
+          placeholderTextColor={colors.mutedText}
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
@@ -56,23 +87,24 @@ const AuthScreen = () => {
           value={password}
           onChangeText={setPassword}
           placeholder="Password"
-          placeholderTextColor="rgba(139,94,60,0.6)"
+          placeholderTextColor={colors.mutedText}
           secureTextEntry
           style={styles.input}
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {info ? <Text style={styles.info}>{info}</Text> : null}
 
         <Pressable
           onPress={() => handleAuth('signin')}
-          style={[styles.button, styles.primary]}
+          style={[styles.button, styles.primary, { backgroundColor: colors.accent }]}
           disabled={loading}
         >
           <Text style={styles.primaryText}>Sign In</Text>
         </Pressable>
         <Pressable
           onPress={() => handleAuth('signup')}
-          style={[styles.button, styles.secondary]}
+          style={[styles.button, styles.secondary, { borderColor: colors.accent }]}
           disabled={loading}
         >
           <Text style={styles.secondaryText}>Sign Up</Text>
@@ -143,6 +175,11 @@ const styles = StyleSheet.create({
   },
   error: {
     color: TERRACOTTA,
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  info: {
+    color: MUTED_GREEN,
     fontSize: 12,
     marginBottom: 6,
   },

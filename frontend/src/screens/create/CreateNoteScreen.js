@@ -11,11 +11,13 @@ import {
   ToastAndroid,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { requestWidgetUpdate } from 'react-native-android-widget';
+import Constants from 'expo-constants';
 import {
   BROWN,
   DUSTY_BLUE,
@@ -30,6 +32,9 @@ import {
 import { useNotes } from '../../hooks/useNotes';
 import PinNestWidget, { WIDGET_NAME_BY_PRIORITY } from '../../widgets/PinNestWidget';
 import { saveWidgetNote } from '../../widgets/widgetTaskHandler';
+import { useUserStore } from '../../store/userStore';
+import { useSettingsStore } from '../../store/settingsStore';
+import { getThemeColors } from '../../utils/themeHelpers';
 
 const COLOR_OPTIONS = [
   { key: 'yellow', label: 'Yellow', hex: NOTE_YELLOW },
@@ -47,10 +52,20 @@ const PRIORITY_OPTIONS = [
 const CreateNoteScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const note = route.params?.note ?? null;
-  const isEdit = Boolean(note?.id);
+  const routeNote = route.params?.note ?? null;
+  const routeId = route.params?.id ?? null;
+  const { notes, addNote, editNote } = useNotes();
+  const noteFromStore = routeId ? notes.find((n) => n.id === routeId) : null;
+  const note = routeNote ?? noteFromStore;
+  const isEdit = Boolean(routeId || note?.id);
+  const insets = useSafeAreaInsets();
+  const theme = useSettingsStore((s) => s.theme);
+  const themeColors = getThemeColors(theme);
+  const isExpoGo =
+    Constants.appOwnership === 'expo' ||
+    Constants.executionEnvironment === 'storeClient';
 
-  const { addNote, editNote } = useNotes();
+  const user = useUserStore((s) => s.user);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -58,6 +73,7 @@ const CreateNoteScreen = () => {
   const [colorKey, setColorKey] = useState('neutral');
   const [deadline, setDeadline] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const colorAnim = useRef(new Animated.Value(3)).current;
 
@@ -80,21 +96,23 @@ const CreateNoteScreen = () => {
     }).start();
   }, [colorAnim, colorKey]);
 
-  const bgColor = useMemo(
-    () =>
-      colorAnim.interpolate({
-        inputRange: COLOR_OPTIONS.map((_, i) => i),
-        outputRange: COLOR_OPTIONS.map((c) => c.hex),
-      }),
-    [colorAnim]
-  );
+  const bgColor = useMemo(() => {
+    if (theme === 'dark') {
+      return themeColors.background;
+    }
+    return colorAnim.interpolate({
+      inputRange: COLOR_OPTIONS.map((_, i) => i),
+      outputRange: COLOR_OPTIONS.map((c) => c.hex),
+    });
+  }, [colorAnim, theme, themeColors.background]);
 
   const deadlineLabel = deadline
     ? format(deadline, 'dd MMM yyyy')
     : 'No deadline';
 
   const buildNotePayload = () => ({
-    id: note?.id,
+    id: note?.id ?? routeId ?? null,
+    user_id: note?.user_id ?? user?.id ?? null,
     title: title.trim(),
     description: description.trim() || null,
     priority,
@@ -104,24 +122,55 @@ const CreateNoteScreen = () => {
   });
 
   const onSave = async () => {
+    if (saving) return;
     if (!title.trim()) return;
+    if (!user?.id && !note?.user_id) {
+      Alert.alert('Sign in required', 'Please sign in before pinning a goal.');
+      return;
+    }
+    setSaving(true);
     const payload = buildNotePayload();
 
-    if (isEdit) {
-      await editNote(note.id, payload);
-    } else {
-      await addNote(payload);
+    if (isEdit && !payload.id) {
+      Alert.alert('Edit failed', 'Missing note id.');
+      setSaving(false);
+      return;
+    }
+
+    const result = isEdit
+      ? await editNote(payload.id, payload)
+      : await addNote(payload);
+
+    if (result?.error) {
+      Alert.alert('Save failed', result.error.message ?? 'Unable to save note.');
+      setSaving(false);
+      return;
     }
 
     await Haptics.selectionAsync();
     if (Platform.OS === 'android') {
       ToastAndroid.show('Pinned!', ToastAndroid.SHORT);
     }
-    navigation.goBack();
+    setSaving(false);
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('board');
+    }
   };
 
   const onAddToHomeScreen = async () => {
-    if (!isEdit || !note?.id) return;
+    if (isExpoGo) {
+      Alert.alert(
+        'Requires Dev Build',
+        'Home screen widgets require a custom dev build. Expo Go does not support react-native-android-widget.'
+      );
+      return;
+    }
+    if (!isEdit || !note?.id) {
+      Alert.alert('Save first', 'Save this note before adding it to your home screen.');
+      return;
+    }
     const widgetNote = buildNotePayload();
     const widgetName = WIDGET_NAME_BY_PRIORITY[priority] ?? WIDGET_NAME_BY_PRIORITY.medium;
 
@@ -147,10 +196,10 @@ const CreateNoteScreen = () => {
   return (
     <Animated.View style={[styles.container, { backgroundColor: bgColor }]}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={[styles.flex, { paddingBottom: insets.bottom + 8 }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.swatchRow}>
+        <View style={[styles.swatchRow, { marginTop: insets.top + 4 }]}>
           {COLOR_OPTIONS.map((swatch) => {
             const active = colorKey === swatch.key;
             return (
@@ -171,16 +220,16 @@ const CreateNoteScreen = () => {
           value={title}
           onChangeText={setTitle}
           placeholder="Your goal..."
-          placeholderTextColor={BROWN}
-          style={styles.titleInput}
+          placeholderTextColor={themeColors.mutedText}
+          style={[styles.titleInput, { color: themeColors.text }]}
         />
 
         <TextInput
           value={description}
           onChangeText={setDescription}
           placeholder="Add details (optional)..."
-          placeholderTextColor={BROWN}
-          style={styles.descriptionInput}
+          placeholderTextColor={themeColors.mutedText}
+          style={[styles.descriptionInput, { color: themeColors.text }]}
           multiline
         />
 
@@ -199,6 +248,7 @@ const CreateNoteScreen = () => {
                 <Text
                   style={[
                     styles.priorityText,
+                    { color: themeColors.text },
                     active && { color: PAPER_BEIGE },
                   ]}
                 >
@@ -209,18 +259,25 @@ const CreateNoteScreen = () => {
           })}
         </View>
 
-        <Pressable onPress={() => setShowPicker(true)} style={styles.deadlineRow}>
+        <Pressable
+          onPress={() => setShowPicker(true)}
+          style={[
+            styles.deadlineRow,
+            { backgroundColor: theme === 'dark' ? themeColors.card : 'rgba(255,255,255,0.35)' },
+          ]}
+        >
           <Text
             style={[
               styles.deadlineText,
               !deadline && { opacity: 0.6 },
+              { color: themeColors.text },
             ]}
           >
             {deadlineLabel}
           </Text>
           {deadline ? (
             <Pressable onPress={() => setDeadline(null)}>
-              <Text style={styles.clearText}>Clear</Text>
+              <Text style={[styles.clearText, { color: themeColors.accent }]}>Clear</Text>
             </Pressable>
           ) : null}
         </Pressable>
@@ -237,15 +294,29 @@ const CreateNoteScreen = () => {
           />
         ) : null}
 
-        <View style={styles.bottomBar}>
-          {isEdit ? (
-            <Pressable onPress={onAddToHomeScreen} style={styles.widgetButton}>
-              <Text style={styles.widgetText}>Add to Home Screen</Text>
-            </Pressable>
-          ) : null}
-          <Pressable onPress={onSave} style={styles.saveButton}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 6 }]}>
+          <Pressable
+            onPress={onAddToHomeScreen}
+            style={[
+              styles.widgetButton,
+              { borderColor: themeColors.accent },
+              (!isEdit || isExpoGo) && styles.widgetDisabled,
+            ]}
+            disabled={!isEdit || isExpoGo}
+          >
+            <Text
+              style={[
+                styles.widgetText,
+                { color: themeColors.accent },
+                (!isEdit || isExpoGo) && styles.widgetTextDisabled,
+              ]}
+            >
+              Add to Home Screen
+            </Text>
+          </Pressable>
+          <Pressable onPress={onSave} style={[styles.saveButton, saving && styles.saveDisabled]} disabled={saving}>
             <Text style={styles.saveText}>
-              {isEdit ? 'Save changes' : 'Pin it'}
+              {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Pin it'}
             </Text>
           </Pressable>
         </View>
@@ -345,11 +416,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  widgetDisabled: {
+    opacity: 0.5,
+  },
+  widgetTextDisabled: {
+    color: 'rgba(217,122,95,0.7)',
+  },
   saveButton: {
     backgroundColor: TERRACOTTA,
     paddingVertical: 14,
     borderRadius: 18,
     alignItems: 'center',
+  },
+  saveDisabled: {
+    opacity: 0.7,
   },
   saveText: {
     color: PAPER_BEIGE,

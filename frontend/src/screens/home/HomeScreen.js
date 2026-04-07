@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import StickyNote from '../../components/notes/StickyNote';
 import {
@@ -20,6 +21,8 @@ import {
 import { getPrioritySize } from '../../utils/priorityHelpers';
 import { useNotes } from '../../hooks/useNotes';
 import { useUserStore } from '../../store/userStore';
+import { useSettingsStore } from '../../store/settingsStore';
+import { getThemeColors } from '../../utils/themeHelpers';
 
 const DOT_SIZE = 2;
 const DOT_SPACING = 22;
@@ -56,8 +59,11 @@ const buildPositions = (notes, maxWidth, jitterMap) => {
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const theme = useSettingsStore((s) => s.theme);
+  const themeColors = getThemeColors(theme);
   const { user } = useUserStore();
-  const { filteredNotes, loading, fetchNotes, removeNote, activeFilter, setFilter } = useNotes();
+  const { filteredNotes, loading, fetchNotes, removeNote, toggleComplete, activeFilter, setFilter } = useNotes();
   const [boardSize, setBoardSize] = useState(() => {
     const { width, height } = Dimensions.get('window');
     return { width, height };
@@ -74,10 +80,22 @@ const HomeScreen = () => {
     return map;
   }, [filteredNotes]);
 
+  const orderedNotes = useMemo(() => {
+    if (activeFilter !== 'all') return filteredNotes;
+    return [...filteredNotes].sort((a, b) => {
+      if (a.is_completed === b.is_completed) {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      }
+      return a.is_completed ? 1 : -1;
+    });
+  }, [activeFilter, filteredNotes]);
+
   const layout = useMemo(() => {
     const maxWidth = Math.max(240, boardSize.width - GUTTER * 2);
-    return buildPositions(filteredNotes, maxWidth, jitterMap);
-  }, [filteredNotes, boardSize.width, jitterMap]);
+    return buildPositions(orderedNotes, maxWidth, jitterMap);
+  }, [orderedNotes, boardSize.width, jitterMap]);
 
   const dots = useMemo(() => {
     const cols = Math.ceil(boardSize.width / DOT_SPACING) + 2;
@@ -105,14 +123,19 @@ const HomeScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: themeColors.background },
+      ]}
+    >
       <View style={styles.topBar}>
-        <Text style={styles.logo}>PinNest</Text>
+        <Text style={[styles.logo, { color: themeColors.accent }]}>PinNest</Text>
         <Pressable
           onPress={() => navigation.navigate('CreateNoteScreen')}
-          style={styles.addButton}
+          style={[styles.addButton, { backgroundColor: themeColors.accent, shadowColor: themeColors.shadow }]}
         >
-          <Text style={styles.addButtonText}>+</Text>
+          <Text style={[styles.addButtonText, { color: themeColors.accentText }]}>+</Text>
         </Pressable>
       </View>
 
@@ -124,9 +147,19 @@ const HomeScreen = () => {
             <Pressable
               key={tab}
               onPress={() => setFilter(tab)}
-              style={[styles.tab, active && styles.tabActive]}
+              style={[
+                styles.tab,
+                { backgroundColor: themeColors.card },
+                active && { backgroundColor: themeColors.accent },
+              ]}
             >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: themeColors.text },
+                  active && { color: themeColors.accentText },
+                ]}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -135,47 +168,79 @@ const HomeScreen = () => {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} />}
       >
-        <Pressable onLayout={onBoardLayout} style={styles.board}>
+        <Pressable onLayout={onBoardLayout} style={[styles.board, { backgroundColor: themeColors.background }]}>
           <View style={styles.dotLayer} pointerEvents="none">
             {dots.map((dot) => (
               <View
                 key={dot.key}
-                style={[styles.dot, { left: dot.left, top: dot.top }]}
+                style={[
+                  styles.dot,
+                  {
+                    left: dot.left,
+                    top: dot.top,
+                    backgroundColor: themeColors.text,
+                    opacity: theme === 'dark' ? 0.08 : 0.18,
+                  },
+                ]}
               />
             ))}
           </View>
 
-          {filteredNotes.length === 0 ? (
+          {orderedNotes.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>🗂️</Text>
-              <Text style={styles.emptyText}>Pin your first goal</Text>
+              <Text style={[styles.emptyText, { color: themeColors.text }]}>Pin your first goal</Text>
             </View>
           ) : (
-            filteredNotes.map((note) => {
+            orderedNotes.map((note, idx) => {
               const pos = layout.positions[note.id];
               // Guard: skip notes that don't have a layout position yet (e.g. temp optimistic notes).
               if (!pos) return null;
               return (
                 <StickyNote
-                  key={note.id}
+                  key={note.id ?? `note-${idx}`}
                   note={note}
                   style={{ left: pos.left, top: pos.top }}
                   onPress={() =>
-                    navigation.navigate('EditNoteScreen', { note })
+                    navigation.navigate('EditNoteScreen', { note, id: note.id })
                   }
                   onLongPress={() => {
+                    if (!note.id) {
+                      Alert.alert('Delete failed', 'Missing note id.');
+                      return;
+                    }
                     Alert.alert(
-                      'Delete Note',
-                      `Delete "${note.title}"? This cannot be undone.`,
+                      note.is_completed ? 'Completed Note' : 'Note Options',
+                      `"${note.title}"`,
                       [
                         { text: 'Cancel', style: 'cancel' },
                         {
+                          text: note.is_completed ? 'Mark Active' : 'Mark Complete',
+                          onPress: async () => {
+                            const result = await toggleComplete(note.id);
+                            if (result?.error) {
+                              Alert.alert(
+                                'Update failed',
+                                result.error.message ?? 'Unable to update note.'
+                              );
+                            }
+                          },
+                        },
+                        {
                           text: 'Delete',
                           style: 'destructive',
-                          onPress: () => removeNote(note.id),
+                          onPress: async () => {
+                            const result = await removeNote(note.id);
+                            if (result?.error) {
+                              Alert.alert(
+                                'Delete failed',
+                                result.error.message ?? 'Unable to delete note.'
+                              );
+                            }
+                          },
                         },
                       ]
                     );

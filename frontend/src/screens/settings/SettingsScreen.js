@@ -1,57 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useUserStore } from '../../store/userStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import {
   BROWN,
   PAPER_BEIGE,
   TERRACOTTA,
   WARM_BG,
 } from '../../constants/colors';
-
-const THEME_KEY = 'pinnest_theme_preference';
+import { getThemeColors } from '../../utils/themeHelpers';
 
 const SettingsScreen = () => {
   const { user, signOut } = useUserStore();
-  const [darkMode, setDarkMode] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(THEME_KEY).then((value) => {
-      setDarkMode(value === 'dark');
-    });
-  }, []);
-
-  const toggleDarkMode = async () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    await AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
-  };
+  const theme = useSettingsStore((s) => s.theme);
+  const toggleTheme = useSettingsStore((s) => s.toggleTheme);
+  const colors = getThemeColors(theme);
+  const darkMode = theme === 'dark';
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.label}>Signed in as</Text>
-        <Text style={styles.value}>{user?.email ?? '—'}</Text>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, paddingBottom: insets.bottom + 8, paddingTop: insets.top },
+      ]}
+    >
+      <View style={[styles.card, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
+        <Text style={[styles.label, { color: colors.mutedText }]}>Signed in as</Text>
+        <Text style={[styles.value, { color: colors.text }]}>{user?.email ?? '—'}</Text>
       </View>
 
-      <View style={styles.cardRow}>
-        <Text style={styles.label}>Dark mode</Text>
+      <View style={[styles.cardRow, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
+        <Text style={[styles.label, { color: colors.mutedText }]}>Dark mode</Text>
         <Switch
           value={darkMode}
-          onValueChange={toggleDarkMode}
-          thumbColor={darkMode ? TERRACOTTA : PAPER_BEIGE}
-          trackColor={{ false: 'rgba(139,94,60,0.2)', true: 'rgba(217,122,95,0.4)' }}
+          onValueChange={toggleTheme}
+          thumbColor={darkMode ? colors.accent : colors.card}
+          trackColor={{
+            false: 'rgba(139,94,60,0.2)',
+            true: 'rgba(217,122,95,0.4)',
+          }}
         />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>App version</Text>
-        <Text style={styles.value}>{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+      <View style={[styles.card, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
+        <Text style={[styles.label, { color: colors.mutedText }]}>App version</Text>
+        <Text style={[styles.value, { color: colors.text }]}>
+          {Constants.expoConfig?.version ?? '1.0.0'}
+        </Text>
       </View>
 
-      <Pressable onPress={signOut} style={styles.signOut}>
-        <Text style={styles.signOutText}>Sign Out</Text>
+      <Pressable onPress={signOut} style={[styles.signOut, { borderColor: colors.accent }]}>
+        <Text style={[styles.signOutText, { color: colors.accent }]}>Sign Out</Text>
       </Pressable>
     </View>
   );

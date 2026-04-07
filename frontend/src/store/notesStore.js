@@ -48,11 +48,14 @@ export const useNotesStore = create(
     },
     addNote: async (noteData) => {
       const tempId = `temp-${Date.now()}`;
+      const safeNote = { ...noteData };
+      // Never allow incoming payload to override the temp id.
+      if ('id' in safeNote) delete safeNote.id;
       set((state) => {
         state.error = null;
         state.notes.unshift({
+          ...safeNote,
           id: tempId,
-          ...noteData,
           is_completed: false,
           created_at: new Date().toISOString(),
         });
@@ -66,6 +69,7 @@ export const useNotesStore = create(
           state.notes = state.notes.map((n) => (n.id === tempId ? data : n));
         }
       });
+      return { data, error };
     },
     editNote: async (id, updates) => {
       const prev = get().notes.find((n) => n.id === id);
@@ -83,6 +87,7 @@ export const useNotesStore = create(
           state.notes = state.notes.map((n) => (n.id === id ? data : n));
         }
       });
+      return { data, error };
     },
     removeNote: async (id) => {
       const prev = get().notes;
@@ -97,6 +102,7 @@ export const useNotesStore = create(
           state.notes = prev;
         });
       }
+      return { data: null, error };
     },
     toggleComplete: async (id) => {
       const prev = get().notes.find((n) => n.id === id);
@@ -121,6 +127,7 @@ export const useNotesStore = create(
           state.notes = state.notes.map((n) => (n.id === id ? data : n));
         }
       });
+      return { data, error };
     },
   }))
 );

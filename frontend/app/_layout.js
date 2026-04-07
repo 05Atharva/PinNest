@@ -1,21 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import { supabase } from '../src/services/supabase';
 import { useUserStore } from '../src/store/userStore';
 import { useNotesStore } from '../src/store/notesStore';
-import AuthScreen from '../src/screens/auth/AuthScreen';
-import '../src/widgets/widgetTaskHandler';
+import { useSettingsStore } from '../src/store/settingsStore';
+// Avoid loading native widget module in Expo Go (native module not present).
+if (Constants.appOwnership !== 'expo') {
+  // eslint-disable-next-line global-require
+  require('../src/widgets/widgetTaskHandler');
+}
 
 const RootLayout = () => {
   const [checking, setChecking] = useState(true);
-  // Reactive selector — re-renders the layout when session changes.
   const session = useUserStore((s) => s.session);
   const setSession = useUserStore((s) => s.setSession);
   const fetchNotes = useNotesStore((s) => s.fetchNotes);
+  const loadTheme = useSettingsStore((s) => s.loadTheme);
+  const router = useRouter();
+  const segments = useSegments();
+  const navState = useRootNavigationState();
 
   useEffect(() => {
     let mounted = true;
+    loadTheme();
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data.session);
@@ -36,22 +45,22 @@ const RootLayout = () => {
     };
   }, [fetchNotes, setSession]);
 
-  if (checking) return null;
-
-  if (!session) {
-    return (
-      <>
-        <StatusBar style="light" />
-        <AuthScreen />
-      </>
-    );
-  }
+  useEffect(() => {
+    if (!navState?.key || checking) return;
+    const inAuth = segments[0] === 'auth';
+    if (!session && !inAuth) {
+      router.replace('/auth');
+    } else if (session && inAuth) {
+      router.replace('/(tabs)/board');
+    }
+  }, [checking, navState?.key, router, segments, session]);
 
   return (
     <>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="auth" />
         <Stack.Screen name="CreateNoteScreen" />
         <Stack.Screen name="EditNoteScreen" />
       </Stack>

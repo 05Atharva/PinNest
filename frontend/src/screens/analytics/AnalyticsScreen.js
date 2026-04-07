@@ -1,11 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   VictoryAxis,
   VictoryChart,
   VictoryLine,
   VictoryPie,
+  VictoryScatter,
   VictoryTheme,
 } from 'victory-native';
 import { format } from 'date-fns';
@@ -24,6 +27,8 @@ import {
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { useNotes } from '../../hooks/useNotes';
 import { formatDeadline, getUrgencyLevel } from '../../utils/dateHelpers';
+import { useSettingsStore } from '../../store/settingsStore';
+import { getThemeColors } from '../../utils/themeHelpers';
 
 // note.color is stored as a string name in DB — map to hex for backgroundColor.
 const COLOR_MAP = {
@@ -33,8 +38,24 @@ const COLOR_MAP = {
   neutral: NOTE_NEUTRAL,
 };
 
-const HEATMAP_COLS = 12;
+const HEATMAP_COLS = 14;
 const HEATMAP_ROWS = 7;
+const HEATMAP_CELL = 12;
+const HEATMAP_GAP = 4;
+
+const startOfDay = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const dateKey = (date) => startOfDay(date).toDateString();
+
+const addDays = (date, days) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
 
 const getConsistencyColor = (score) => {
   if (score >= 70) return MUTED_GREEN;
@@ -54,6 +75,9 @@ const SkeletonBlock = ({ height }) => (
 );
 
 const AnalyticsScreen = () => {
+  const theme = useSettingsStore((s) => s.theme);
+  const colors = getThemeColors(theme);
+  const insets = useSafeAreaInsets();
   const {
     summary,
     weeklyCompletions,
@@ -61,42 +85,79 @@ const AnalyticsScreen = () => {
     priorityBreakdown,
     insights,
     loading,
+    refresh,
   } = useAnalytics();
   const { notes } = useNotes();
 
-  const completionPct = Math.round((summary.completionRate || 0) * 100);
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
-  const heatmapGrid = useMemo(() => {
+  const completionPct = Math.round((summary.completionRate || 0) * 100);
+  const [chartWidth, setChartWidth] = useState(0);
+  const [heatmapCell, setHeatmapCell] = useState(HEATMAP_CELL);
+
+  const heatmapColumns = useMemo(() => {
     if (!heatmapData?.length) return [];
-    const grid = Array.from({ length: HEATMAP_ROWS }, () => []);
+    const end = startOfDay(new Date());
+    const start = addDays(end, -97);
+    const startMonday = addDays(start, -((start.getDay() + 6) % 7));
+    const dateToCount = new Map(
+      heatmapData.map((d) => [dateKey(d.date), d.count ?? 0])
+    );
+
+    const cols = [];
     for (let col = 0; col < HEATMAP_COLS; col += 1) {
+      const cells = [];
       for (let row = 0; row < HEATMAP_ROWS; row += 1) {
-        const idx = col * HEATMAP_ROWS + row;
-        const item = heatmapData[idx];
-        grid[row][col] = item ?? { date: null, count: 0 };
+        const date = addDays(startMonday, col * 7 + row);
+        const inRange = date >= start && date <= end;
+        const key = dateKey(date);
+        cells.push({
+          date,
+          count: inRange ? dateToCount.get(key) ?? 0 : null,
+          inRange,
+        });
       }
+      cols.push(cells);
     }
-    return grid;
+    return cols;
   }, [heatmapData]);
 
-  const heatmapLabels = useMemo(() => {
+  const heatmapMonthLabels = useMemo(() => {
     if (!heatmapData?.length) return [];
     const labels = [];
+    const end = startOfDay(new Date());
+    const start = addDays(end, -97);
+    const startMonday = addDays(start, -((start.getDay() + 6) % 7));
+    let lastMonth = -1;
     for (let col = 0; col < HEATMAP_COLS; col += 1) {
-      const idx = col * HEATMAP_ROWS;
-      const item = heatmapData[idx];
-      if (!item?.date) {
+      const date = addDays(startMonday, col * 7);
+      if (date < start || date > end) {
         labels.push('');
+        continue;
+      }
+      if (date.getMonth() !== lastMonth) {
+        labels.push(format(date, 'MMM'));
+        lastMonth = date.getMonth();
       } else {
-        labels.push(format(new Date(item.date), 'MMM d'));
+        labels.push('');
       }
     }
     return labels;
   }, [heatmapData]);
 
   const weeklySeries = weeklyCompletions?.length
-    ? weeklyCompletions.map((w, idx) => ({ x: idx + 1, y: w.count ?? 0 }))
+    ? weeklyCompletions.map((w, idx) => ({
+        x: idx + 1,
+        y: w.count ?? 0,
+        label: w.weekStart ? format(new Date(w.weekStart), 'MMM d') : `W${idx + 1}`,
+      }))
     : [];
+  const maxWeekly = weeklySeries.reduce((max, d) => Math.max(max, d.y), 0);
+  const weeklyLabels = weeklySeries.filter((_, idx) => idx % 2 === 0).map((d) => d.label);
 
   const priorityData = [
     { x: 'High', y: priorityBreakdown.high ?? 0, color: TERRACOTTA },
@@ -111,13 +172,23 @@ const AnalyticsScreen = () => {
       .slice(0, 5);
   }, [notes]);
 
+  const cardStyle = { backgroundColor: colors.card, shadowColor: colors.shadow };
+  const textStyle = { color: colors.text };
+  const mutedTextStyle = { color: colors.mutedText };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 16, paddingTop: insets.top + 6 },
+      ]}
+    >
       <LinearGradient
-        colors={['#F3E3B3', WARM_BG]}
+        colors={theme === 'dark' ? [colors.card, colors.background] : ['#F3E3B3', WARM_BG]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.card, styles.heroCard]}
+        style={[styles.card, styles.heroCard, cardStyle]}
       >
         {loading ? (
           <SkeletonBlock height={80} />
@@ -125,15 +196,17 @@ const AnalyticsScreen = () => {
           <>
             <Text style={styles.heroEmoji}>🔥</Text>
             <Text style={styles.heroNumber}>{summary.streak ?? 0}</Text>
-            <Text style={styles.heroLabel}>day streak</Text>
-            <Text style={styles.heroSub}>Best: {summary.streak ?? 0} days</Text>
+            <Text style={[styles.heroLabel, textStyle]}>day streak</Text>
+            <Text style={[styles.heroSub, mutedTextStyle]}>
+              Best: {summary.streak ?? 0} days
+            </Text>
           </>
         )}
       </LinearGradient>
 
       <View style={styles.statsRow}>
-        <View style={[styles.card, styles.statCard]}>
-          <Text style={styles.cardTitle}>Completion</Text>
+        <View style={[styles.card, styles.statCard, cardStyle]}>
+          <Text style={[styles.cardTitle, mutedTextStyle]}>Completion</Text>
           {loading ? (
             <SkeletonBlock height={70} />
           ) : (
@@ -152,12 +225,12 @@ const AnalyticsScreen = () => {
             />
           )}
           {!loading ? (
-            <Text style={styles.statValue}>{completionPct}%</Text>
+            <Text style={[styles.statValue, textStyle]}>{completionPct}%</Text>
           ) : null}
         </View>
 
-        <View style={[styles.card, styles.statCard]}>
-          <Text style={styles.cardTitle}>Consistency</Text>
+        <View style={[styles.card, styles.statCard, cardStyle]}>
+          <Text style={[styles.cardTitle, mutedTextStyle]}>Consistency</Text>
           {loading ? (
             <SkeletonBlock height={70} />
           ) : (
@@ -171,101 +244,157 @@ const AnalyticsScreen = () => {
             </Text>
           )}
           {!loading ? (
-            <Text style={styles.scoreLabel}>/ 100</Text>
+            <Text style={[styles.scoreLabel, mutedTextStyle]}>/ 100</Text>
           ) : null}
         </View>
 
-        <View style={[styles.card, styles.statCard]}>
-          <Text style={styles.cardTitle}>Total Pinned</Text>
+        <View style={[styles.card, styles.statCard, cardStyle]}>
+          <Text style={[styles.cardTitle, mutedTextStyle]}>Total Pinned</Text>
           {loading ? (
             <SkeletonBlock height={70} />
           ) : (
-            <Text style={styles.scoreValue}>{summary.totalCreated ?? 0}</Text>
+            <Text style={[styles.scoreValue, textStyle]}>
+              {summary.totalCreated ?? 0}
+            </Text>
           )}
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Activity Heatmap</Text>
+      <View style={[styles.card, cardStyle]}>
+        <Text style={[styles.sectionTitle, textStyle]}>Activity Heatmap</Text>
         {loading ? (
           <SkeletonBlock height={120} />
         ) : (
           <View style={styles.heatmapWrap}>
             <View style={styles.heatmapRowLabels}>
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => (
-                <Text key={d} style={styles.heatmapLabel}>
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, idx) => (
+                <Text
+                  key={`${d}-${idx}`}
+                  style={[
+                    styles.heatmapLabel,
+                    mutedTextStyle,
+                    {
+                      height: heatmapCell,
+                      lineHeight: heatmapCell,
+                      marginBottom: idx === HEATMAP_ROWS - 1 ? 0 : HEATMAP_GAP,
+                    },
+                  ]}
+                >
                   {d}
                 </Text>
               ))}
             </View>
-            <View style={styles.heatmapGrid}>
-              {heatmapGrid.map((row, rowIdx) => (
-                <View key={`row-${rowIdx}`} style={styles.heatmapRow}>
-                  {row.map((cell, colIdx) => (
-                    <View
-                      key={`cell-${rowIdx}-${colIdx}`}
-                      style={[
-                        styles.heatmapCell,
-                        { backgroundColor: getHeatmapColor(cell.count || 0) },
-                      ]}
-                    />
+            <View
+              style={styles.heatmapGrid}
+              onLayout={(e) => {
+                const width = e.nativeEvent.layout.width;
+                const cell = Math.floor(
+                  (width - HEATMAP_GAP * (HEATMAP_COLS - 1)) / HEATMAP_COLS
+                );
+                if (cell && cell !== heatmapCell) setHeatmapCell(cell);
+              }}
+            >
+              <View style={styles.heatmapColumns}>
+                  {heatmapColumns.map((col, colIdx) => (
+                    <View key={`col-${colIdx}`} style={styles.heatmapColumn}>
+                      {col.map((cell, rowIdx) => (
+                        <View
+                          key={`cell-${colIdx}-${rowIdx}`}
+                          style={[
+                            styles.heatmapCell,
+                            {
+                              backgroundColor: cell.inRange
+                                ? getHeatmapColor(cell.count || 0)
+                                : 'transparent',
+                              opacity: cell.inRange ? 1 : 0.25,
+                              width: heatmapCell,
+                              height: heatmapCell,
+                              marginBottom: rowIdx === HEATMAP_ROWS - 1 ? 0 : HEATMAP_GAP,
+                            },
+                          ]}
+                        />
+                      ))}
+                    </View>
                   ))}
-                </View>
-              ))}
+              </View>
+              <View style={styles.heatmapMonthRow}>
+                {heatmapMonthLabels.map((label, idx) => (
+                  <Text
+                    key={`label-${idx}`}
+                    style={[styles.heatmapMonthLabel, mutedTextStyle, { width: heatmapCell }]}
+                  >
+                    {label}
+                  </Text>
+                ))}
+              </View>
             </View>
           </View>
         )}
-        {!loading ? (
-          <View style={styles.heatmapAxis}>
-            {heatmapLabels.map((label, idx) => (
-              <Text key={`label-${idx}`} style={styles.heatmapAxisLabel}>
-                {idx % 3 === 0 ? label : ''}
-              </Text>
-            ))}
-          </View>
-        ) : null}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Weekly Completions</Text>
+      <View
+        style={[styles.card, cardStyle]}
+        onLayout={(e) => {
+          setChartWidth(e.nativeEvent.layout.width);
+        }}
+      >
+        <Text style={[styles.sectionTitle, textStyle]}>Weekly Completions</Text>
         {loading ? (
           <SkeletonBlock height={160} />
         ) : (
-          {weeklySeries.length < 2 ? (
-            // VictoryLine needs at least 2 data points to render — show placeholder.
-            <Text style={styles.emptyNote}>Not enough data yet</Text>
+          weeklySeries.length < 2 ? (
+            // VictoryLine needs at least 2 data points — show a placeholder instead.
+            <Text style={[styles.emptyNote, mutedTextStyle]}>Not enough data yet</Text>
           ) : (
-            <VictoryChart
-              width={320}
-              height={180}
-              theme={VictoryTheme.material}
-              domainPadding={{ y: 10 }}
-            >
-              <VictoryAxis
-                tickFormat={() => ''}
-                style={{ axis: { stroke: 'transparent' }, ticks: { stroke: 'transparent' } }}
-              />
-              <VictoryAxis
-                dependentAxis
-                style={{
-                  axis: { stroke: 'transparent' },
-                  ticks: { stroke: 'transparent' },
-                  tickLabels: { fill: BROWN, fontSize: 10 },
-                  grid: { stroke: 'rgba(139,94,60,0.1)' },
-                }}
-              />
-              <VictoryLine
-                interpolation="natural"
-                data={weeklySeries}
-                style={{ data: { stroke: TERRACOTTA, strokeWidth: 3 } }}
-              />
-            </VictoryChart>
-          )}
+            <>
+              <VictoryChart
+                width={Math.max(280, chartWidth || 320)}
+                height={180}
+                theme={VictoryTheme.material}
+                domain={{ y: [0, Math.max(maxWeekly, 1)] }}
+                domainPadding={{ y: 10 }}
+              >
+                <VictoryAxis
+                  tickValues={[]}
+                  tickFormat={() => ''}
+                  style={{
+                    axis: { stroke: 'transparent' },
+                    ticks: { stroke: 'transparent' },
+                    tickLabels: { fontSize: 0, padding: 0 },
+                  }}
+                />
+                <VictoryAxis
+                  dependentAxis
+                  tickCount={4}
+                  style={{
+                    axis: { stroke: 'transparent' },
+                    ticks: { stroke: 'transparent' },
+                    tickLabels: { fill: colors.text, fontSize: 10 },
+                    grid: { stroke: 'rgba(139,94,60,0.15)' },
+                  }}
+                />
+                <VictoryLine
+                  interpolation="natural"
+                  data={weeklySeries}
+                  style={{ data: { stroke: TERRACOTTA, strokeWidth: 3 } }}
+                />
+                <VictoryScatter
+                  data={weeklySeries}
+                  size={3}
+                  style={{ data: { fill: TERRACOTTA } }}
+                  labels={({ datum }) => datum.label}
+                  labelComponent={
+                    <Text style={[styles.weeklyInlineLabel, mutedTextStyle]} />
+                  }
+                />
+              </VictoryChart>
+            </>
+          )
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Priority Breakdown</Text>
+      <View style={[styles.card, cardStyle]}>
+        <Text style={[styles.sectionTitle, textStyle]}>Priority Breakdown</Text>
         {loading ? (
           <SkeletonBlock height={160} />
         ) : (
@@ -282,7 +411,7 @@ const AnalyticsScreen = () => {
               {priorityData.map((item) => (
                 <View key={item.x} style={styles.legendRow}>
                   <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                  <Text style={styles.legendText}>
+                  <Text style={[styles.legendText, textStyle]}>
                     {item.x}: {item.y}
                   </Text>
                 </View>
@@ -292,8 +421,8 @@ const AnalyticsScreen = () => {
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Upcoming Deadlines</Text>
+      <View style={[styles.card, cardStyle]}>
+        <Text style={[styles.sectionTitle, textStyle]}>Upcoming Deadlines</Text>
         {loading ? (
           <SkeletonBlock height={120} />
         ) : upcoming.length ? (
@@ -313,7 +442,7 @@ const AnalyticsScreen = () => {
                     { backgroundColor: COLOR_MAP[note.color] ?? NOTE_NEUTRAL },
                   ]}
                 />
-                <Text style={styles.deadlineTitle} numberOfLines={1}>
+                <Text style={[styles.deadlineTitle, textStyle]} numberOfLines={1}>
                   {note.title}
                 </Text>
                 <View style={[styles.deadlineBadge, { backgroundColor: badgeColor }]}>
@@ -325,7 +454,7 @@ const AnalyticsScreen = () => {
             );
           })
         ) : (
-          <Text style={styles.emptyNote}>No upcoming deadlines</Text>
+          <Text style={[styles.emptyNote, mutedTextStyle]}>No upcoming deadlines</Text>
         )}
       </View>
 
@@ -336,10 +465,14 @@ const AnalyticsScreen = () => {
           insights.map((text, idx) => (
             <View
               key={`insight-${idx}`}
-              style={[styles.insightCard, idx % 2 === 0 && styles.insightAlt]}
+              style={[
+                styles.insightCard,
+                { backgroundColor: colors.card, shadowColor: colors.shadow },
+                idx % 2 === 0 && styles.insightAlt,
+              ]}
             >
               <Text style={styles.insightEmoji}>💡</Text>
-              <Text style={styles.insightText}>{text}</Text>
+              <Text style={[styles.insightText, textStyle]}>{text}</Text>
             </View>
           ))
         )}
@@ -433,37 +566,44 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heatmapRowLabels: {
-    gap: 6,
-    paddingTop: 2,
+    width: 18,
+    paddingTop: 1,
   },
   heatmapLabel: {
     fontSize: 10,
     color: BROWN,
     opacity: 0.6,
+    height: HEATMAP_CELL,
   },
   heatmapGrid: {
     flex: 1,
   },
-  heatmapRow: {
+  heatmapColumns: {
     flexDirection: 'row',
-    gap: 4,
-    marginBottom: 4,
+    gap: HEATMAP_GAP,
   },
+  heatmapColumn: {},
   heatmapCell: {
-    width: 12,
-    height: 12,
+    width: HEATMAP_CELL,
+    height: HEATMAP_CELL,
     borderRadius: 3,
   },
-  heatmapAxis: {
+  heatmapMonthRow: {
     flexDirection: 'row',
+    gap: HEATMAP_GAP,
     marginTop: 6,
-    justifyContent: 'space-between',
   },
-  heatmapAxisLabel: {
-    fontSize: 9,
+  heatmapMonthLabel: {
+    width: HEATMAP_CELL,
+    textAlign: 'center',
+    fontSize: 8,
     color: BROWN,
     opacity: 0.6,
-    width: 22,
+  },
+  weeklyInlineLabel: {
+    fontSize: 9,
+    position: 'absolute',
+    top: 6,
   },
   pieWrap: {
     flexDirection: 'row',

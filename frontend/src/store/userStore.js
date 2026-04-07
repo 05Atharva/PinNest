@@ -22,7 +22,12 @@ export const useUserStore = create(
       });
     },
     signOut: async () => {
-      await supabase.auth.signOut();
+      try {
+        // Local sign-out clears cached session even if network is flaky.
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // Ignore errors and still clear local state.
+      }
       set((state) => {
         state.user = null;
         state.session = null;

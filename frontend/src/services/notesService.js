@@ -17,9 +17,16 @@ export const getNotes = async (userId) => {
 
 export const createNote = async (noteData) => {
   try {
+    const payload = { ...noteData };
+    // Let the database generate the UUID when creating a note.
+    if (!payload.id) delete payload.id;
+    if (!payload.user_id) {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.id) payload.user_id = userData.user.id;
+    }
     const { data, error } = await supabase
       .from('notes')
-      .insert(noteData)
+      .insert(payload)
       .select('*')
       .single();
     return handle(data, error);
@@ -30,9 +37,11 @@ export const createNote = async (noteData) => {
 
 export const updateNote = async (id, updates) => {
   try {
+    const payload = { ...updates };
+    if ('id' in payload) delete payload.id;
     const { data, error } = await supabase
       .from('notes')
-      .update(updates)
+      .update(payload)
       .eq('id', id)
       .select('*')
       .single();
@@ -44,6 +53,9 @@ export const updateNote = async (id, updates) => {
 
 export const deleteNote = async (id) => {
   try {
+    if (!id) {
+      return handle(null, new Error('Missing note id'));
+    }
     const { data, error } = await supabase.from('notes').delete().eq('id', id);
     return handle(data, error);
   } catch (error) {
