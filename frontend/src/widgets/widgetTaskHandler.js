@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
 import React from 'react';
+import { Linking } from 'react-native';
 import PinNestWidget from './PinNestWidget';
 
 const NOTE_STORAGE_KEY = 'pinnest_widget_note_';
@@ -53,6 +54,12 @@ registerWidgetTaskHandler(async ({ widgetAction, widgetId, clickActionData }) =>
   // For WIDGET_CLICK the OS brings the app to foreground automatically.
   // Deep-link routing can be wired in Phase 2.
   if (widgetAction === 'WIDGET_CLICK') {
+    const noteId = clickActionData?.note?.id ?? null;
+    if (noteId) {
+      Linking.openURL(`pinnest://EditNoteScreen?id=${encodeURIComponent(noteId)}`);
+    } else {
+      Linking.openURL('pinnest://board');
+    }
     return null;
   }
 

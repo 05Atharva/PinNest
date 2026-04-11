@@ -23,6 +23,7 @@ import { useNotes } from '../../hooks/useNotes';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { getThemeColors } from '../../utils/themeHelpers';
+import { logEvent } from '../../services/analyticsService';
 
 const DOT_SIZE = 2;
 const DOT_SPACING = 22;
@@ -204,9 +205,12 @@ const HomeScreen = () => {
                   key={note.id ?? `note-${idx}`}
                   note={note}
                   style={{ left: pos.left, top: pos.top }}
-                  onPress={() =>
-                    navigation.navigate('EditNoteScreen', { note, id: note.id })
-                  }
+                  onPress={() => {
+                    if (user?.id && note?.id) {
+                      logEvent({ userId: user.id, noteId: note.id, eventType: 'note_viewed' });
+                    }
+                    navigation.navigate('EditNoteScreen', { note, id: note.id });
+                  }}
                   onLongPress={() => {
                     if (!note.id) {
                       Alert.alert('Delete failed', 'Missing note id.');

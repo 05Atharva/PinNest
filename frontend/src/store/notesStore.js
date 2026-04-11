@@ -7,6 +7,7 @@ import {
   deleteNote,
   markComplete,
 } from '../services/notesService';
+import { logEvent } from '../services/analyticsService';
 
 const initialState = {
   notes: [],
@@ -69,6 +70,9 @@ export const useNotesStore = create(
           state.notes = state.notes.map((n) => (n.id === tempId ? data : n));
         }
       });
+      if (!error && data?.id && data?.user_id) {
+        await logEvent({ userId: data.user_id, noteId: data.id, eventType: 'note_created' });
+      }
       return { data, error };
     },
     editNote: async (id, updates) => {
@@ -127,6 +131,15 @@ export const useNotesStore = create(
           state.notes = state.notes.map((n) => (n.id === id ? data : n));
         }
       });
+      if (!error && data?.id && data?.user_id && nextStatus) {
+        await logEvent({ userId: data.user_id, noteId: data.id, eventType: 'note_completed' });
+        if (data.deadline) {
+          const deadline = new Date(data.deadline);
+          const completedAt = data.completed_at ? new Date(data.completed_at) : new Date();
+          const eventType = completedAt <= deadline ? 'deadline_met' : 'deadline_missed';
+          await logEvent({ userId: data.user_id, noteId: data.id, eventType });
+        }
+      }
       return { data, error };
     },
   }))

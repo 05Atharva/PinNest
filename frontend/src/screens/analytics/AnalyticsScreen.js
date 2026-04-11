@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import { AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
@@ -95,6 +95,13 @@ const AnalyticsScreen = () => {
     }, [refresh])
   );
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
+
   const completionPct = Math.round((summary.completionRate || 0) * 100);
   const [chartWidth, setChartWidth] = useState(0);
   const [heatmapCell, setHeatmapCell] = useState(HEATMAP_CELL);
@@ -157,7 +164,9 @@ const AnalyticsScreen = () => {
       }))
     : [];
   const maxWeekly = weeklySeries.reduce((max, d) => Math.max(max, d.y), 0);
-  const weeklyLabels = weeklySeries.filter((_, idx) => idx % 2 === 0).map((d) => d.label);
+  const weeklyLabelSet = new Set(
+    weeklySeries.filter((_, idx) => idx % 3 === 0).map((d) => d.label)
+  );
 
   const priorityData = [
     { x: 'High', y: priorityBreakdown.high ?? 0, color: TERRACOTTA },
@@ -382,7 +391,7 @@ const AnalyticsScreen = () => {
                   data={weeklySeries}
                   size={3}
                   style={{ data: { fill: TERRACOTTA } }}
-                  labels={({ datum }) => datum.label}
+                  labels={({ datum }) => (weeklyLabelSet.has(datum.label) ? datum.label : '')}
                   labelComponent={
                     <Text style={[styles.weeklyInlineLabel, mutedTextStyle]} />
                   }
@@ -601,9 +610,9 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   weeklyInlineLabel: {
-    fontSize: 9,
+    fontSize: 8,
     position: 'absolute',
-    top: 6,
+    top: 10,
   },
   pieWrap: {
     flexDirection: 'row',

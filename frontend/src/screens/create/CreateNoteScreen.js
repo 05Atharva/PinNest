@@ -196,7 +196,7 @@ const CreateNoteScreen = () => {
   return (
     <Animated.View style={[styles.container, { backgroundColor: bgColor }]}>
       <KeyboardAvoidingView
-        style={[styles.flex, { paddingBottom: insets.bottom + 8 }]}
+        style={[styles.flex, { paddingBottom: 0 }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.swatchRow, { marginTop: insets.top + 4 }]}>
@@ -294,7 +294,7 @@ const CreateNoteScreen = () => {
           />
         ) : null}
 
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 6 }]}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 2 }]}>
           <Pressable
             onPress={onAddToHomeScreen}
             style={[
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     marginTop: 'auto',
-    paddingVertical: 18,
+    paddingVertical: 12,
     gap: 10,
   },
   widgetButton: {

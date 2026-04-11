@@ -61,8 +61,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-eas-project-id"
+        "projectId": "bd58db63-bab4-492b-85f5-87921b9176ba"
       }
-    }
+    },
+    "owner": "atharva14"
   }
 }

@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Stack, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../src/services/supabase';
 import { useUserStore } from '../src/store/userStore';
 import { useNotesStore } from '../src/store/notesStore';
 import { useSettingsStore } from '../src/store/settingsStore';
+import { logStreakDayIfNeeded } from '../src/services/analyticsService';
 // Avoid loading native widget module in Expo Go (native module not present).
 if (Constants.appOwnership !== 'expo') {
   // eslint-disable-next-line global-require
@@ -27,15 +29,22 @@ const RootLayout = () => {
     loadTheme();
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      setSession(data.session);
-      if (data.session?.user?.id) fetchNotes(data.session.user.id);
+      const session = data.session ?? null;
+      setSession(session);
+      if (session?.user?.id) {
+        fetchNotes(session.user.id);
+        logStreakDayIfNeeded(session.user.id, AsyncStorage);
+      }
       setChecking(false);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
-        if (session?.user?.id) fetchNotes(session.user.id);
+        if (session?.user?.id) {
+          fetchNotes(session.user.id);
+          logStreakDayIfNeeded(session.user.id, AsyncStorage);
+        }
       }
     );
 

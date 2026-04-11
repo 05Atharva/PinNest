@@ -2,6 +2,44 @@ import { supabase } from './supabase';
 
 const handle = (data, error) => ({ data, error: error ?? null });
 
+const STREAK_KEY = 'pinnest_last_streak_day';
+
+export const logEvent = async ({ userId, noteId = null, eventType, metadata = null }) => {
+  try {
+    if (!userId || !eventType) {
+      return handle(null, new Error('Missing userId or eventType'));
+    }
+    const { data, error } = await supabase
+      .from('analytics_events')
+      .insert({
+        user_id: userId,
+        note_id: noteId,
+        event_type: eventType,
+        metadata,
+      })
+      .select('*')
+      .single();
+    return handle(data, error);
+  } catch (error) {
+    return handle(null, error);
+  }
+};
+
+export const logStreakDayIfNeeded = async (userId, storage) => {
+  try {
+    if (!userId || !storage) return handle(null, null);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const key = STREAK_KEY;
+    const last = await storage.getItem(key);
+    if (last === today.toISOString()) return handle(null, null);
+    await storage.setItem(key, today.toISOString());
+    return await logEvent({ userId, eventType: 'streak_day' });
+  } catch (error) {
+    return handle(null, error);
+  }
+};
+
 const dayKey = (date) => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
