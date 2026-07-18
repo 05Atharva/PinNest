@@ -1,0 +1,130 @@
+diff --git a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/builder/widget/BaseWidget.java b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/builder/widget/BaseWidget.java
+index 2c70de7..302e7f1 100644
+--- a/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/builder/widget/BaseWidget.java
++++ b/node_modules/react-native-android-widget/android/src/main/java/com/reactnativeandroidwidget/builder/widget/BaseWidget.java
+@@ -9,8 +9,6 @@ import android.widget.LinearLayout;
+ 
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.bridge.ReadableMap;
+-import com.facebook.react.uimanager.Spacing;
+-import com.facebook.react.views.view.ReactViewBackgroundDrawable;
+ 
+ import java.util.Collections;
+ import java.util.HashMap;
+@@ -24,7 +22,9 @@ public abstract class BaseWidget<T extends View> {
+ 
+     protected T view;
+ 
+-    private ReactViewBackgroundDrawable mReactViewBackground;
++    private GradientDrawable mBackgroundDrawable;
++    private int strokeWidth = 0;
++    private int strokeColor = Color.TRANSPARENT;
+ 
+     public BaseWidget(ReactApplicationContext context, ReadableMap props, List<View> children) {
+         this.appContext = context;
+@@ -89,7 +89,7 @@ public abstract class BaseWidget<T extends View> {
+ 
+     private void setBackground() {
+         if (props.hasKey("backgroundColor")) {
+-            getReactViewBackground().setColor(Color.parseColor(props.getString("backgroundColor")));
++            getBackgroundDrawable().setColor(Color.parseColor(props.getString("backgroundColor")));
+         }
+ 
+         // This will overwrite border
+@@ -124,48 +124,47 @@ public abstract class BaseWidget<T extends View> {
+     }
+ 
+     private void setBorder() {
++        GradientDrawable drawable = getBackgroundDrawable();
+         if (props.hasKey("borderColor")) {
+             ReadableMap borderColor = props.getMap("borderColor");
+-            getReactViewBackground().setBorderColor(
+-                Spacing.LEFT,
+-                Color.parseColor(borderColor.getString("left")),
+-                Color.alpha(Color.parseColor(borderColor.getString("left")))
+-            );
+-            getReactViewBackground().setBorderColor(
+-                Spacing.RIGHT,
+-                Color.parseColor(borderColor.getString("right")),
+-                Color.alpha(Color.parseColor(borderColor.getString("right")))
+-            );
+-            getReactViewBackground().setBorderColor(
+-                Spacing.TOP,
+-                Color.parseColor(borderColor.getString("top")),
+-                Color.alpha(Color.parseColor(borderColor.getString("top")))
+-            );
+-            getReactViewBackground().setBorderColor(
+-                Spacing.BOTTOM,
+-                Color.parseColor(borderColor.getString("bottom")),
+-                Color.alpha(Color.parseColor(borderColor.getString("bottom")))
+-            );
++            strokeColor = Color.parseColor(borderColor.getString("left"));
+         }
+ 
+         if (props.hasKey("borderWidth")) {
+             ReadableMap borderWidth = props.getMap("borderWidth");
+-            getReactViewBackground().setBorderWidth(Spacing.LEFT, dpToPx(borderWidth.getDouble("left")));
+-            getReactViewBackground().setBorderWidth(Spacing.RIGHT, dpToPx(borderWidth.getDouble("right")));
+-            getReactViewBackground().setBorderWidth(Spacing.TOP, dpToPx(borderWidth.getDouble("top")));
+-            getReactViewBackground().setBorderWidth(Spacing.BOTTOM, dpToPx(borderWidth.getDouble("bottom")));
++            strokeWidth = dpToPx(borderWidth.getDouble("left"));
++        }
++
++        if (strokeWidth > 0) {
++            drawable.setStroke(strokeWidth, strokeColor);
+         }
+ 
+         if (props.hasKey("borderRadius")) {
+             ReadableMap borderRadius = props.getMap("borderRadius");
+-            getReactViewBackground().setRadius(dpToPx(borderRadius.getDouble("topRight")), 1);
+-            getReactViewBackground().setRadius(dpToPx(borderRadius.getDouble("bottomRight")), 2);
+-            getReactViewBackground().setRadius(dpToPx(borderRadius.getDouble("bottomLeft")), 3);
+-            getReactViewBackground().setRadius(dpToPx(borderRadius.getDouble("topLeft")), 0);
++            drawable.setCornerRadii(
++                new float[]{
++                    dpToPx(borderRadius.getDouble("topLeft")),
++                    dpToPx(borderRadius.getDouble("topLeft")),
++                    dpToPx(borderRadius.getDouble("topRight")),
++                    dpToPx(borderRadius.getDouble("topRight")),
++                    dpToPx(borderRadius.getDouble("bottomRight")),
++                    dpToPx(borderRadius.getDouble("bottomRight")),
++                    dpToPx(borderRadius.getDouble("bottomLeft")),
++                    dpToPx(borderRadius.getDouble("bottomLeft"))
++                }
++            );
+         }
+ 
+         if (props.hasKey("borderStyle")) {
+-            getReactViewBackground().setBorderStyle(props.getString("borderStyle").toUpperCase());
++            String style = props.getString("borderStyle");
++            if ("dashed".equalsIgnoreCase(style)) {
++                drawable.setStroke(
++                    Math.max(1, strokeWidth),
++                    strokeColor,
++                    8,
++                    8
++                );
++            }
+         }
+     }
+ 
+@@ -207,13 +206,13 @@ public abstract class BaseWidget<T extends View> {
+         }
+     }
+ 
+-    private ReactViewBackgroundDrawable getReactViewBackground() {
+-        if (mReactViewBackground == null) {
+-            mReactViewBackground = new ReactViewBackgroundDrawable(view.getContext());
+-            view.setBackground(null);
+-            view.setBackground(mReactViewBackground);
++    private GradientDrawable getBackgroundDrawable() {
++        if (mBackgroundDrawable == null) {
++            mBackgroundDrawable = new GradientDrawable();
++            mBackgroundDrawable.setColor(Color.TRANSPARENT);
++            view.setBackground(mBackgroundDrawable);
+         }
+-        return mReactViewBackground;
++        return mBackgroundDrawable;
+     }
+ 
+     private Map<String, Object> getObjectOrEmptyMap(ReadableMap propMap) {
